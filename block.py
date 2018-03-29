@@ -15,11 +15,11 @@ from helper import (
 
 class Proof:
 
-    def __init__(self, merkle_root, tx_hash, index, merkle_proof):
+    def __init__(self, merkle_root, tx_hash, index, proof_hashes):
         self.merkle_root = merkle_root
         self.tx_hash = tx_hash
         self.index = index
-        self.merkle_proof = merkle_proof
+        self.proof_hashes = proof_hashes
 
     def __repr__(self):
         s = '{}:{}:{}:['.format(
@@ -27,7 +27,7 @@ class Proof:
             hexlify(self.tx_hash).decode('ascii'),
             self.index,
         )
-        for p in self.merkle_proof:
+        for p in self.proof_hashes:
             s += '{},'.format(hexlify(p).decode('ascii'))
         s += ']'
         return s
@@ -36,18 +36,20 @@ class Proof:
         '''Returns whether this proof is valid'''
         # current hash starts with self.tx_hash, reversed
         current = self.tx_hash[::-1]
-        # Get the Merkle Path for the index and 2**len(merkle_proof)
-        path = merkle_path(self.index, 2**len(self.merkle_proof))
-        # Loop through Merkle Path and proof hashes
-        for proof_hash, index_at_level in zip(self.merkle_proof, path):
-            # if index_at_level is odd, proof_hash goes on left
-            if index_at_level % 2 == 1:
+        # initialize the current_index to be the index at at base level
+        current_index = self.index
+        # Loop through proof hashes
+        for proof_hash in self.proof_hashes:
+            # if current_index is odd, proof_hash goes on left
+            if current_index % 2 == 1:
                 # current hash becomes merkle parent of proof_hash and current
                 current = merkle_parent(proof_hash, current)
-            # if index_at_level is even, proof_hash goes on right
+            # if current_index is even, proof_hash goes on right
             else:
                 # current hash becomes merkle parent of current and proof_hash
                 current = merkle_parent(current, proof_hash)
+            # update the current_index to be integer divide by 2
+            current_index //= 2
         # if final result reversed is equal to merkle_root, return True
         return current[::-1] == self.merkle_root
 
@@ -180,8 +182,6 @@ class Block:
             self.merkle_tree.append(current_level)
             # Make current level Merkle Parent level
             current_level = merkle_parent_level(current_level)
-        # store root as the final level
-        self.merkle_tree.append(current_level)
     
     def create_merkle_proof(self, tx_hash):
         # if self.merkle_tree is empty, go and calculate the merkle tree
@@ -189,20 +189,22 @@ class Block:
             self.calculate_merkle_tree()
         # find the index of this tx_hash
         index = self.tx_hashes.index(tx_hash)
-        # Get the Merkle Path
-        path = merkle_path(index, len(self.tx_hashes))
         # initialize merkle_proof list
         proof_hashes = []
-        # Loop over the items in the Merkle Path
-        for level, index_at_level in enumerate(path):
+        # initialize the current index to be the index at the base level
+        current_index = index
+        # Loop over the levels in the merkle tree
+        for level in self.merkle_tree:
             # Find the partner index (-1 for odd, +1 for even)
-            if index_at_level % 2 == 1:
-                partner_index = index_at_level - 1
+            if current_index % 2 == 1:
+                partner = current_index - 1
             else:
-                partner_index = index_at_level + 1
+                partner = current_index + 1
             # add partner to merkle_proof list
-            proof_hashes.append(self.merkle_tree[level][partner_index])
-        # Return a Proof instance
+            proof_hashes.append(level[partner])
+            # update the current_index to be integer divide by 2
+            current_index //= 2
+        # Return a Proof instance Proof(root, tx_hash, index, proof_list)
         return Proof(self.merkle_root, tx_hash, index, proof_hashes)
 
 
@@ -354,14 +356,10 @@ class BlockTest(TestCase):
             'b9f5560ce9630ea4177a7ac56d18dea73c8f76b59e02ab4805eaeebd84a4c5b1',
             '00aa9ad6a7841ffbbf262eb775f8357674f1ea23af11c01cfb6d481fec879701',
         ]
-        want4 = [
-            'acbcab8bcc1af95d8d563b77d24c3d19b18f1486383d75a5085c4e86c86beed6',
-        ]
         self.assertEqual(block.merkle_tree[0], [unhexlify(x) for x in want0])
         self.assertEqual(block.merkle_tree[1], [unhexlify(x) for x in want1])
         self.assertEqual(block.merkle_tree[2], [unhexlify(x) for x in want2])
         self.assertEqual(block.merkle_tree[3], [unhexlify(x) for x in want3])
-        self.assertEqual(block.merkle_tree[4], [unhexlify(x) for x in want4])
 
     def test_create_merkle_proof(self):
         hashes_hex = [
@@ -391,7 +389,7 @@ class BlockTest(TestCase):
             '26906cb2caeb03626102f7606ea332784281d5d20e2b4839fbb3dbb37262dbc1',
             '00aa9ad6a7841ffbbf262eb775f8357674f1ea23af11c01cfb6d481fec879701',
         ]
-        self.assertEqual(proof.merkle_proof, [unhexlify(x) for x in want])
+        self.assertEqual(proof.proof_hashes, [unhexlify(x) for x in want])
 
     def test_verify_merkle_proof(self):
         merkle_root = unhexlify('d6ee6bc8864e5c08a5753d3886148fb1193d4cd2773b568d5df91acc8babbcac')
@@ -404,5 +402,5 @@ class BlockTest(TestCase):
             '00aa9ad6a7841ffbbf262eb775f8357674f1ea23af11c01cfb6d481fec879701',
         ]
         proof_hashes = [unhexlify(x) for x in proof_hex_hashes]
-        proof = Proof(merkle_root=merkle_root, tx_hash=tx_hash, index=index, merkle_proof=proof_hashes)
+        proof = Proof(merkle_root=merkle_root, tx_hash=tx_hash, index=index, proof_hashes=proof_hashes)
         self.assertTrue(proof.verify())
