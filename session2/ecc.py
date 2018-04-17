@@ -275,21 +275,29 @@ class ECCTest(TestCase):
         invalid_points = ((200,119), (42,99))
         
         # iterate over valid points
+        for x_raw, y_raw in valid_points:
             # Initialize points this way:
             # x = FieldElement(x_raw, prime)
+            x = FieldElement(x_raw, prime)
             # y = FieldElement(y_raw, prime)
+            y = FieldElement(y_raw, prime)
             # Point(x, y, a, b)
+            Point(x, y, a, b)
             # Creating the point should not result in an error
 
         # iterate over invalid points
+        for x_raw, y_raw in invalid_points:
             # Initialize points this way:
             # x = FieldElement(x_raw, prime)
+            x = FieldElement(x_raw, prime)
             # y = FieldElement(y_raw, prime)
+            y = FieldElement(y_raw, prime)
             # Point(x, y, a, b)
             # check that creating the point results in a RuntimeError
             # with self.assertRaises(RuntimeError):
             #     Point(x, y, a, b)
-        raise NotImplementedError
+            with self.assertRaises(RuntimeError):
+                Point(x, y, a, b)
 
     def test_add1(self):
         # tests the following additions on curve y^2=x^3-7 over F_223:
@@ -307,18 +315,19 @@ class ECCTest(TestCase):
             (143, 98, 76, 66, 47, 71),
         )
         # iterate over the additions
+        for x1_raw, y1_raw, x2_raw, y2_raw, x3_raw, y3_raw in additions:
             # Initialize points this way:
-            # x1 = FieldElement(x1_raw, prime)
-            # y1 = FieldElement(y1_raw, prime)
-            # p1 = Point(x1, y1, a, b)
-            # x2 = FieldElement(x2_raw, prime)
-            # y2 = FieldElement(y2_raw, prime)
-            # p2 = Point(x2, y2, a, b)
-            # x3 = FieldElement(x3_raw, prime)
-            # y3 = FieldElement(y3_raw, prime)
-            # p3 = Point(x3, y3, a, b)
+            x1 = FieldElement(x1_raw, prime)
+            y1 = FieldElement(y1_raw, prime)
+            p1 = Point(x1, y1, a, b)
+            x2 = FieldElement(x2_raw, prime)
+            y2 = FieldElement(y2_raw, prime)
+            p2 = Point(x2, y2, a, b)
+            x3 = FieldElement(x3_raw, prime)
+            y3 = FieldElement(y3_raw, prime)
+            p3 = Point(x3, y3, a, b)
             # check that p1 + p2 == p3
-        raise NotImplementedError
+            self.assertEqual(p1+p2, p3)
 
     def test_rmul(self):
         # tests the following scalar multiplications
@@ -343,16 +352,20 @@ class ECCTest(TestCase):
         )
 
         # iterate over the multiplications
+        for s, x1_raw, y1_raw, x2_raw, y2_raw in multiplications:
             # Initialize points this way:
-            # x1 = FieldElement(x1_raw, prime)
-            # y1 = FieldElement(y1_raw, prime)
-            # p1 = Point(x1, y1, a, b)
+            x1 = FieldElement(x1_raw, prime)
+            y1 = FieldElement(y1_raw, prime)
+            p1 = Point(x1, y1, a, b)
+            if x2_raw is None:
+                p2 = Point(None, None, a, b)
+            else:
             # initialize the second point based on whether it's the point at infinity
-            # x2 = FieldElement(x2_raw, prime)
-            # y2 = FieldElement(y2_raw, prime)
-            # p2 = Point(x2, y2, a, b)
+                x2 = FieldElement(x2_raw, prime)
+                y2 = FieldElement(y2_raw, prime)
+                p2 = Point(x2, y2, a, b)
             # check that the product is equal to the expected point
-        raise NotImplementedError
+            self.assertEqual(s*p1, p2)        
 
 
 A = 0
@@ -409,30 +422,57 @@ class S256Point(Point):
         return result
 
     def sec(self, compressed=True):
-        # returns the binary version of the sec format, NOT hex
+       # returns the binary version of the sec format, NOT hex
         # if compressed, starts with b'\x02' if self.y.num is even, b'\x03' if self.y is odd
         # then self.x.num
         # remember, you have to convert self.x.num/self.y.num to binary (some_integer.to_bytes(32, 'big'))
+        if compressed:
+            if self.y.num % 2 == 0:
+                return b'\x02' + self.x.num.to_bytes(32, 'big')
+            else:
+                return b'\x03' + self.x.num.to_bytes(32, 'big')
+        else:
         # if non-compressed, starts with b'\x04' followod by self.x and then self.y
-        raise NotImplementedError
+            return b'\x04' + self.x.num.to_bytes(32, 'big') + self.y.num.to_bytes(32, 'big')
 
     def address(self, compressed=True, testnet=False):
-        '''Returns the address string'''
-        # get the sec
+         # get the sec
         # hash160 the sec
         # raw is hash 160 prepended w/ b'\x00' for mainnet, b'\x6f' for testnet
         # checksum is first 4 bytes of double_sha256 of raw
         # encode_base58 the raw + checksum
         # return as a string, you can use .decode('ascii') to do this.
-        raise NotImplementedError
+        '''Returns the address string'''
+        # get the sec format
+        sec = self.sec(compressed)
+        # hash160 the result
+        h160 = hash160(sec)
+        # prepend b'\x00' for mainnet b'\x6f' for testnet
+        if testnet:
+            prefix = b'\x6f'
+        else:
+            prefix = b'\x00'
+        raw = prefix + h160
+        
+        # get the double_sha256 of the prefix + h160, first 4 bytes are the checksum
+        checksum = double_sha256(raw)[:4]
+            # append checksum
+            # encode_base58 the whole thing
+        sum = encode_base58(raw + checksum).decode('ascii')
+        return (sum)
+       
 
     def verify(self, z, sig):
-        # remember sig.r and sig.s are the main things we're checking
+       # remember sig.r and sig.s are the main things we're checking
         # remember 1/s = pow(s, N-2, N)
+        s_inv = pow(sig.s, N-2, N)
         # u = z / s
+        u = z * s_inv % N
         # v = r / s
+        v = sig.r * s_inv % N
         # u*G + v*P should have as the x coordinate, r
-        raise NotImplementedError
+        total = u*G + v*self
+        return total.x.num == sig.r
 
 
 G = S256Point(
@@ -457,9 +497,11 @@ class S256Test(TestCase):
         )
 
         # iterate over points
+        for secret, x, y in points:
             # initialize the secp256k1 point (S256Point)
+            p = S256Point(x, y)
             # check that the secret*G is the same as the point
-        raise NotImplementedError
+            self.assertEqual(secret*G,p)
 
     def test_sec(self):
         coefficient = 999**3
@@ -593,13 +635,17 @@ class PrivateKey:
         return '{:x}'.format(self.secret).zfill(64)
 
     def sign(self, z):
-        # we need a random number k: randint(0, 2**256)
+       # we need a random number k: randint(0, 2**256)
+        k = randint(0, 2**256)
         # r is the x coordinate of the resulting point k*G
+        r = (k*G).x.num
         # remember 1/k = pow(k, N-2, N)
+        k_inv = pow(k, N-2, N)
         # s = (z+r*secret) / k
+        s = (z + r*self.secret) * k_inv % N
         # return an instance of Signature:
         # Signature(r, s)
-        raise NotImplementedError
+        return Signature(r, s)
 
 
 class PrivateKeyTest(TestCase):
