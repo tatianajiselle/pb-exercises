@@ -151,13 +151,19 @@ class Tx:
     def sign_input(self, input_index, private_key, hash_type):
         '''Signs the input using the private key'''
         # get the hash to sign
+        z = self.sig_hash(input_index, hash_type)
         # get der signature of z from private key
+        der = private_key.sign(z).der()
         # append the hash_type to der (use bytes([hash_type]))
+        sig = der + bytes([hash_type])
         # calculate the sec
+        sec = private_key.point.sec()
         # initialize a new script with [sig, sec] as the elements
+        script_sig = Script([sig, sec])
         # change input's script_sig to new script
+        self.tx_ins[input_index].script_sig = script_sig
         # return whether sig is valid using self.verify_input
-        raise NotImplementedError
+        return self.verify_input(input_index)
 
 
 class TxIn:
